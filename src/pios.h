@@ -3,6 +3,7 @@
 
 #include "stm32f10x_conf.h"
 #include <stdint.h>
+#include <stdbool.h>
 #include <pios_delay.h>
 
 #include "pios_board.h"
