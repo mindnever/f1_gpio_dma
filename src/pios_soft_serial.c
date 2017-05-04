@@ -30,8 +30,9 @@
 
 #include "pios_soft_serial.h"
 #include "pios_soft_serial_ll.h"
-
+#include "pios_irq.h"
 #include "pios_tim.h"
+#include "pios_usart.h"
 
 #include <stdbool.h>
 #include <string.h>
@@ -78,8 +79,6 @@ typedef enum {
 } pios_soft_serial_state_t;
 
 struct pios_soft_serial_gpio {
-    GPIO_TypeDef *gpio;
-    uint16_t pin;
     struct pios_soft_serial_ll_gpio ll;
     uint32_t dma;
 };
@@ -98,8 +97,9 @@ struct pios_soft_serial_device {
     enum PIOS_COM_Word_Length word_len;
     enum PIOS_COM_Parity parity;
     enum PIOS_COM_StopBits stop_bits;
+    enum PIOS_USART_Inverted inverted;
     
-    bool tx_queued;
+    bool tx_pending;
 
     uint8_t dma_buffer_free;
 
@@ -120,11 +120,6 @@ static uint32_t *PIOS_Soft_Serial_GetDMABuffer(struct pios_soft_serial_device *d
 static void PIOS_Soft_Serial_FreeDMABuffer(struct pios_soft_serial_device *dev, uint32_t *buffer);
 static uint16_t PIOS_Soft_Serial_Encode(struct pios_soft_serial_device *dev, uint8_t data, uint32_t *buffer);
 static void PIOS_Soft_Serial_Tx_Start_Internal(struct pios_soft_serial_device *dev);
-
-static void PIOS_Soft_Serial_GPIO_Setup(struct pios_soft_serial_gpio *gs,
-                                        GPIO_TypeDef *gpio,
-                                        uint8_t pin,
-                                        uint32_t ll_mode);
 
 
 #if !defined(PIOS_INCLUDE_FREERTOS)
@@ -170,6 +165,7 @@ int32_t PIOS_Soft_Serial_Init(uint32_t *id, const struct pios_soft_serial_config
     dev->word_len = PIOS_COM_Word_length_8b;
     dev->parity = PIOS_COM_Parity_No;
     dev->stop_bits = PIOS_COM_StopBits_1;
+    dev->inverted = PIOS_USART_Inverted_None;
     dev->dma_buffer_free = 0xff;
     
     /* initialize timer base */
@@ -258,10 +254,18 @@ static void PIOS_Soft_Serial_Set_Config(uint32_t id, enum PIOS_COM_Word_Length w
 static void PIOS_Soft_Serial_Tx_Start(uint32_t id, uint16_t tx_bytes_avail)
 {
     PIOS_SOFT_SERIAL_VALIDATE_AND_ASSERT(dev, id);
+
+    PIOS_IRQ_Disable();
     
-    dev->tx_queued = true;
+    bool pending = dev->tx_pending;
     
-    PIOS_Soft_Serial_Tx_Start_Internal(dev);
+    dev->tx_pending = true;
+    
+    PIOS_IRQ_Enable();
+    
+    if(!pending) {
+        PIOS_Soft_Serial_Tx_Start_Internal(dev);
+    }
 }
 
 static void PIOS_Soft_Serial_Rx_Start(uint32_t id, uint16_t rx_bytes_avail)
@@ -297,46 +301,58 @@ static void PIOS_Soft_Serial_Bind_Tx_Cb(uint32_t id, pios_com_callback tx_out_cb
 static int32_t  PIOS_Soft_Serial_Ioctl(uint32_t id, uint32_t ctl, void *param)
 {
     PIOS_SOFT_SERIAL_VALIDATE_AND_ASSERT(dev, id);
-
+    int32_t ret = -1;
+    
+    bool reconf_edge_detect = false;
+    
     switch(ctl) {
         case PIOS_IOCTL_SOFT_SERIAL_SET_RXGPIO:
-            PIOS_Soft_Serial_GPIO_Setup(&dev->rx, (struct stm32_gpio *)param, TYPE_RX);
-
-            return 0;
+            {
+                const struct stm32_gpio *pin = (const struct stm32_gpio *) param;
+                
+                PIOS_Soft_Serial_LL_GPIO_Init(&dev->rx.ll, pin);
+                
+                PIOS_DMA_SetPeripheralBaseAddr(dev->rx.dma, &pin->gpio->IDR);
+                
+                reconf_edge_detect = true;
+                
+                ret = 0;
+            }
+            break;
+            
         case PIOS_IOCTL_SOFT_SERIAL_SET_TXGPIO:
-            PIOS_Soft_Serial_GPIO_Setup(&dev->tx, (struct stm32_gpio *)param, TYPE_TX);
-            PIOS_DMA_SetPeripheralBaseAddr(dev->tx.dma, &((struct stm32_gpio *)param)->gpio->BSRR);
-        break;
+            {
+                const struct stm32_gpio *pin = (const struct stm32_gpio *) param;
+                
+                PIOS_Soft_Serial_LL_GPIO_Init(&dev->tx.ll, pin);
+                
+                PIOS_DMA_SetPeripheralBaseAddr(dev->tx.dma, &pin->gpio->BSRR);
+                
+                ret = 0;
+            }
+            break;
+        
+        case PIOS_IOCTL_USART_SET_INVERTED:
+            {
+                dev->inverted = *(enum PIOS_USART_Inverted *)param;
+
+                reconf_edge_detect = true;
+                
+                ret = 0;
+            }
+            break;
     }
 
-// set rx gpio, init, PIOS_DMA_SetPeripheralBaseAddr(), PIOS_Soft_Serial_LL_EdgeDetect_Configure()
-// set tx gpio, init, PIOS_DMA_SetPeripheralBaseAddr()
+    if(reconf_edge_detect) {
+        PIOS_Soft_Serial_LL_EdgeDetect_Configure(dev->edge_detect,
+                                                 &dev->rx.ll.pin,
+                                                 (dev->inverted & PIOS_USART_Inverted_Rx) ?
+                                                 PIOS_SOFT_SERIAL_LL_EDGEDETECT_RISING : PIOS_SOFT_SERIAL_LL_EDGEDETECT_FALLING);
+    }
 
-    return -1;
+    return ret;
 }
 
-static void PIOS_Soft_Serial_GPIO_Setup(struct pios_soft_serial_device *dev,
-                                        struct stm32_gpio *gpio,
-                                        enum PIOS_SOFT_SERIAL_GPIO_Type type)
-{
-    struct pios_soft_serial_gpio *gs = (type == TYPE_RX) ? &dev->rx : &dev->tx;
-
-    if(gpio) {
-        gs->gpio = gpio->gpio;
-        gs->pin = gpio->init.GPIO_Pin;
-    }
-
-    if(gs->gpio) {
-        PIOS_Soft_Serial_LL_GPIO_Init(&gs->ll, gs->gpio, gs->pin, gpio_mode);
-    
-        if(type == TYPE_RX) {
-            PIOS_DMA_SetPeripheralBaseAddr(gs->dma, &gs->gpio->IDR);
-            PIOS_Soft_Serial_LL_EdgeDetect_Configure(dev->edge_detect, 
-        } else if(type == TYPE_TX) {
-            PIOS_DMA_SetPeripheralBaseAddr(gs->dma, &gs->gpio->BSRR);
-        }
-    }
-}
 
 static uint32_t *PIOS_Soft_Serial_GetDMABuffer(struct pios_soft_serial_device *dev)
 {
@@ -392,6 +408,7 @@ static void PIOS_Soft_Serial_Tx_Start_Internal(struct pios_soft_serial_device *d
 
     if(dev->tx_out_cb(dev->tx_out_context, &b, 1, 0, &task_woken) != 1) {
         PIOS_Soft_Serial_FreeDMABuffer(dev, buffer);
+        dev->tx_pending = false;
     }
     
     uint16_t enc_size = PIOS_Soft_Serial_Encode(dev, b, buffer);
@@ -404,23 +421,24 @@ static void PIOS_Soft_Serial_DMA_Setup(uint32_t dma_handle, uint32_t context)
 {
     PIOS_SOFT_SERIAL_VALIDATE_AND_ASSERT(dev, context);
     
-    // 1. disable RX edge detection (rx & tx)
+    /* Disable start bit detection */
     PIOS_Soft_Serial_LL_EdgeDetect_Cmd(dev->edge_detect, DISABLE);
     
-    // 2. GPIO change direction based on current mode (!!)
+    /* Reconfigure GPIO */
+    struct pios_soft_serial_gpio *gs = 0;
+    
     if(dma_handle == dev->rx.dma) {
-        PIOS_DEBUG_Assert(dev->rx.gpio);
-
-        PIOS_SOFT_SERIAL_LL_GPIO_INPUT(dev->rx.ll);
-
+        gs = &dev->rx;
     } else if(dma_handle == dev->tx.dma) {
-        PIOS_DEBUG_Assert(dev->tx.gpio);
-
-        PIOS_SOFT_SERIAL_LL_GPIO_OUTPUT(dev->tx.ll);
-
+        gs = &dev->tx;
     } else {
         PIOS_DEBUG_Assert(0); //
     }
+    
+    PIOS_Soft_Serial_LL_GPIO_Init(&gs->ll, 0);
+
+    /* Start generating DMA requests */
+    /* Should we adjust appropriate CCR now? */
 
     TIM_DMACmd(dev->cfg->timer, dev->tim_dma_source, ENABLE);
 }
@@ -430,6 +448,9 @@ static void PIOS_Soft_Serial_DMA_Complete(uint32_t dma_handle, uint32_t context)
     PIOS_SOFT_SERIAL_VALIDATE_AND_ASSERT(dev, context);
 
     TIM_DMACmd(dev->cfg->timer, dev->tim_dma_source, DISABLE); // Stop generating requests
+    
+    // Should go to next state
+    //
 }
 
 static void PIOS_Soft_Serial_DMA_Error(uint32_t dma_handle, uint32_t context)

@@ -9,17 +9,14 @@
 #include "pios_board.h"
 
 #define PIOS_DEBUG_Assert(x) assert_param(x)
+#define PIOS_Assert(x) PIOS_DEBUG_Assert(x)
 
 #define PIOS_IRQ_PRIO_LOW        12              // lower than RTOS
 #define PIOS_IRQ_PRIO_MID        8               // higher than RTOS
 #define PIOS_IRQ_PRIO_HIGH       5               // for SPI, ADC, I2C etc...
 #define PIOS_IRQ_PRIO_HIGHEST    4               // for USART etc...
 
-struct stm32_gpio {
-    GPIO_TypeDef     *gpio;
-    GPIO_InitTypeDef init;
-    uint8_t pin_source;
-};
+#include "pios_stm32.h"
 
 struct pios_board_pin_af {
     uint8_t timer;
@@ -43,7 +40,7 @@ struct pios_board_pin {
     TIM_TypeDef *timer;
     uint8_t timer_channel; /* channel number [1..4]*/
     /* Timer DMA */
-    DMA_Channel_TypeDef *dma_channel;
+    DMA_Channel_TypeDef *timer_channel_dma;
 
 #ifdef STM32F1
     struct pios_board_pin_remap remap;

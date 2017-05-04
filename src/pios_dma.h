@@ -61,7 +61,7 @@ struct pios_dma_config {
 int32_t PIOS_DMA_Init(uint32_t *dma_handle, const struct pios_dma_config *config);
 
 void PIOS_DMA_SetMemoryBaseAddr(uint32_t dma_handle, void *memptr, uint16_t size);
-void PIOS_DMA_SetPeripheralBaseAddr(uint32_t dma_handle, void *periph);
+void PIOS_DMA_SetPeripheralBaseAddr(uint32_t dma_handle, __IO void *periph);
 
 void PIOS_DMA_Queue(uint32_t dma_handle, uint32_t callback_context);
 

@@ -30,11 +30,14 @@
 
 #include "pios_soft_serial_ll.h"
 #include "pios_irq.h"
+#include "pios_exti.h"
 
 #include <string.h>
 
+#define EXTI_LINENONE 0
+
 struct pios_soft_serial_ll_edgedetect_device {
-    
+    uint32_t exti_line;
 };
 
 #if !defined(PIOS_INCLUDE_FREERTOS)
@@ -57,12 +60,63 @@ int32_t PIOS_Soft_Serial_LL_EdgeDetect_Init(uint32_t *id, pios_soft_serial_ll_ed
 
     memset(dev, 0, sizeof(*dev));
 
+    dev->exti_line = EXTI_LINENONE;
+
     return 0;
 }
 
-void PIOS_Soft_Serial_LL_EdgeDetect_Configure(uint32_t dev, const struct pios_soft_serial_ll_edgedetect_config *config)
+static bool PIOS_Soft_Serial_LL_EdgeDetect_Vector()
 {
+    return false;
+}
 
+void PIOS_Soft_Serial_LL_EdgeDetect_Configure(uint32_t id,
+                                              const struct stm32_gpio *pin,
+                                              enum PIOS_SOFT_SERIAL_LL_EdgeDetect_Polarity polarity)
+{
+    struct pios_soft_serial_ll_edgedetect_device *dev = (struct pios_soft_serial_ll_edgedetect_device *)id;
+    // DeInit old one
+    if(dev->exti_line != EXTI_LINENONE) {
+        struct pios_exti_cfg cfg = {
+            .vector = PIOS_Soft_Serial_LL_EdgeDetect_Vector,
+            .line = dev->exti_line,
+            .exti = {
+                .init = {
+                    .EXTI_Line = dev->exti_line,
+                    .EXTI_Mode = EXTI_Mode_Interrupt,
+                }
+            }
+        };
+        PIOS_EXTI_DeInit(&cfg);
+    }
+    
+    dev->exti_line = pin->init.GPIO_Pin;
+    
+    // Init new one
+    if(dev->exti_line != EXTI_LINENONE) {
+        struct pios_exti_cfg cfg = {
+            .vector = PIOS_Soft_Serial_LL_EdgeDetect_Vector,
+            .line = dev->exti_line,
+            .pin = *pin,
+            .exti = {
+                .init = {
+                    .EXTI_Line = dev->exti_line,
+                    .EXTI_Mode = EXTI_Mode_Interrupt,
+                    .EXTI_Trigger = polarity,
+                    .EXTI_LineCmd = ENABLE,
+                }
+            },
+            .irq = {
+                .init = {
+                    .NVIC_IRQChannelPreemptionPriority = PIOS_IRQ_PRIO_HIGHEST,
+                    .NVIC_IRQChannelSubPriority = 0,
+                    .NVIC_IRQChannelCmd = ENABLE,
+                }
+            }
+        };
+        
+        PIOS_EXTI_Init(&cfg);
+    }
 }
 
 void PIOS_Soft_Serial_LL_EdgeDetect_Cmd(uint32_t dev, FunctionalState NewState)
@@ -70,10 +124,17 @@ void PIOS_Soft_Serial_LL_EdgeDetect_Cmd(uint32_t dev, FunctionalState NewState)
 
 }
 
-void PIOS_Soft_Serial_LL_GPIO_Init(struct pios_soft_serial_ll_gpio *llg,
-                                   GPIO_TypeDef *gpio,
-                                   uint16_t pin,
-                                   uint32_t mode)
+void PIOS_Soft_Serial_LL_GPIO_Init(struct pios_soft_serial_ll_gpio *llg, const struct stm32_gpio *pin)
 {
+    if(pin) {
+        llg->pin = *pin;
+    }
+
+    PIOS_DEBUG_Assert(llg->pin.gpio);
     
+    PIOS_IRQ_Disable();
+    {
+      GPIO_Init(llg->pin.gpio, &llg->pin.init);
+    }
+    PIOS_IRQ_Enable();
 }

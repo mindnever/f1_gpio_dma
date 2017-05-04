@@ -260,7 +260,7 @@ void PIOS_DMA_SetMemoryBaseAddr(uint32_t dma, void *memptr, uint16_t size)
     dma_req->regs.CNDTR = size;
 }
 
-void PIOS_DMA_SetPeripheralBaseAddr(uint32_t dma, void *periph)
+void PIOS_DMA_SetPeripheralBaseAddr(uint32_t dma, __IO void *periph)
 {
     struct pios_dma_request *dma_req = (struct pios_dma_request *)dma; // validate?
     

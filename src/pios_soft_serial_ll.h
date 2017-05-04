@@ -36,74 +36,22 @@ typedef void (*pios_soft_serial_ll_edgedetect_cb)(uint32_t dev, uint32_t context
 
 int32_t PIOS_Soft_Serial_LL_EdgeDetect_Init(uint32_t *dev, pios_soft_serial_ll_edgedetect_cb callback, uint32_t context);
 
-typedef enum {
-    PIOS_SOFT_SERIAL_LL_EDGEDETECT_RISING,
-    PIOS_SOFT_SERIAL_LL_EDGEDETECT_FALLING,
-} PIOS_SOFT_SERIAL_LL_EdgeDetect_Polarity;
-
-struct pios_soft_serial_ll_edgedetect_config {
-    GPIO_TypeDef *gpio;
-    uint16_t pin;
-
-    PIOS_SOFT_SERIAL_LL_EdgeDetect_Polarity polarity;
-
-    TIM_TypeDef *timer;
-    uint8_t tim_channel;
+enum PIOS_SOFT_SERIAL_LL_EdgeDetect_Polarity {
+    PIOS_SOFT_SERIAL_LL_EDGEDETECT_RISING = EXTI_Trigger_Rising,
+    PIOS_SOFT_SERIAL_LL_EDGEDETECT_FALLING = EXTI_Trigger_Falling,
 };
 
-void PIOS_Soft_Serial_LL_EdgeDetect_Configure(uint32_t dev, const struct pios_soft_serial_ll_edgedetect_config *config);
+void PIOS_Soft_Serial_LL_EdgeDetect_Configure(uint32_t dev,
+                                              const struct stm32_gpio *pin,
+                                              enum PIOS_SOFT_SERIAL_LL_EdgeDetect_Polarity polarity);
 
 void PIOS_Soft_Serial_LL_EdgeDetect_Cmd(uint32_t dev, FunctionalState NewState);
 
 struct pios_soft_serial_ll_gpio {
-    volatile uint32_t *mode_bb;
-#if defined(STM32F1)
-    uint32_t pupd_value;
-    volatile uint32_t *pupd_bsrr;
-#endif
+    struct stm32_gpio pin;
 };
 
-#define PIOS_SOFT_SERIAL_LL_GPIO_ITYPE_PULLUP    0b0001
-#define PIOS_SOFT_SERIAL_LL_GPIO_ITYPE_PULLDOWN  0b0000
-
-#define PIOS_SOFT_SERIAL_LL_GPIO_OTYPE_PP        0b0010
-#define PIOS_SOFT_SERIAL_LL_GPIO_OTYPE_OD        0b0000
-
-#if defined(STM32F3) || defined(STM32F4)
-#define PIOS_SOFT_SERIAL_LL_GPIO_INPUT(llg) \
-    (llg).mode_bb[0] = 0; /* GPIO_MODERx0 */ \
-    (llg).mode_bb[1] = 0; /* GPIO_MODERx1 */
-
-#define PIOS_SOFT_SERIAL_LL_GPIO_OUTPUT(llg) \
-    (llg).mode_bb[0] = 0; /* GPIO_MODERx0 */ \
-    (llg).mode_bb[1] = 1; /* GPIO_MODERx1 */
-
-#elif defined(STM32F1)
-/* Input with PuPd
- * MODE 00, CNF 01
- */
-#define PIOS_SOFT_SERIAL_LL_GPIO_INPUT(llg) \
-    (llg).mode_bb[0] = 0; /* GPIO_MODEy0 */ \
-    (llg).mode_bb[1] = 0; /* GPIO_MODEy1 */ \
-    (llg).mode_bb[2] = 0; /* GPIO_CNFy0 */ \
-    (llg).mode_bb[3] = 1; /* GPIO_CNFy1 */ \
-    *((llg).pupd_bsrr) = (llg).pupd_value /* set pull up-down state */
-
-/* Output Push-pull mode, Max. output speed 10 MHz
- * MODE 01
- * CNF 00
- */
-#define PIOS_SOFT_SERIAL_LL_GPIO_OUTPUT(llg) \
-    (llg).mode_bb[0] = 0; /* GPIO_MODEy0 */ \
-    (llg).mode_bb[1] = 1; /* GPIO_MODEy1 */ \
-    (llg).mode_bb[2] = 0; /* GPIO_CNFy0 */ \
-    (llg).mode_bb[3] = 0; /* GPIO_CNFy1 */
-#endif
-
-void PIOS_Soft_Serial_LL_GPIO_Init(struct pios_soft_serial_ll_gpio *llg,
-                                   GPIO_TypeDef *gpio,
-                                   uint16_t pin,
-                                   uint32_t mode);
+void PIOS_Soft_Serial_LL_GPIO_Init(struct pios_soft_serial_ll_gpio *llg, const struct stm32_gpio *pin);
 
 
 #endif /* PIOS_SOFT_SERIAL_LL_H */

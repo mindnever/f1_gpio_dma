@@ -4,8 +4,21 @@
 
 #define TIM_Channel_0 0
 
-#define PIOS_BOARD_PIN(id,g,nr,t, ch, dmach) \
-    [id] = { .gpio = GPIO##g, .pin_nr = nr, .timer = t, .timer_channel = TIM_Channel_##ch, .dma_channel = dmach},
+#define PIOS_BOARD_PIN(g,nr,t, ch, dmach) \
+    { .gpio = GPIO##g, .pin_nr = nr, .timer = t, .timer_channel = TIM_Channel_##ch, .timer_ch_dma = dmach }
+
+
+
+//typedef enum {
+//    PB13_SPI2_SCK = STM32_PIN(B, 13, SPI2, 0, 0),
+//    PB13_USART3_CTS = STM32_PIN(B, 13, USART3, 0, 0),
+//    
+//    PB10_I2C2_SCL = STM32_PIN(B, 10, I2C2, 0, 0)
+//    PB10_USART3_TX = STM32_PIN(B, 10, USART3, 0, 0)
+//    PB10_TIM2_CH3_REMAP2 = STM32_PIN(B, 10, TIM2, 3, TIM2_REMAP2)
+//    PB10_TIM2_CH3_REMAP3 = STM32_PIN(B, 10, TIM2, 3, TIM2_REMAP3)
+//} stm32_pin_t;
+
 
 //struct pios_board_pin board_io_pins[] = {
 //
