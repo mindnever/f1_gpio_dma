@@ -44,4 +44,7 @@ struct pios_soft_serial_config {
 
 int32_t PIOS_Soft_Serial_Init(uint32_t *dev, const struct pios_soft_serial_config *config);
 
+#define PIOS_IOCTL_SOFT_SERIAL_SET_RXGPIO     COM_IOCTL(COM_IOCTL_TYPE_SOFT_SERIAL, 4, struct stm32_gpio)
+#define PIOS_IOCTL_SOFT_SERIAL_SET_TXGPIO     COM_IOCTL(COM_IOCTL_TYPE_SOFT_SERIAL, 5, struct stm32_gpio)
+
 #endif /* PIOS_SOFT_SERIAL_H */

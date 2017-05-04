@@ -70,7 +70,10 @@ void PIOS_Soft_Serial_LL_EdgeDetect_Cmd(uint32_t dev, FunctionalState NewState)
 
 }
 
-void PIOS_Soft_Serial_LL_GPIO_Init(struct pios_soft_serial_ll_gpio *llg, GPIO_TypeDef *gpio, uint16_t pin)
+void PIOS_Soft_Serial_LL_GPIO_Init(struct pios_soft_serial_ll_gpio *llg,
+                                   GPIO_TypeDef *gpio,
+                                   uint16_t pin,
+                                   uint32_t mode)
 {
     
 }

@@ -141,7 +141,7 @@ extern int32_t PIOS_COM_Ioctl(uint32_t com_id, uint32_t ctl, void *param);
 enum pios_com_ioctl_type {
     COM_IOCTL_TYPE_USART,
     COM_IOCTL_TYPE_USB_CDC,
-    COM_IOCTL_TYPE_SOFT_UART,
+    COM_IOCTL_TYPE_SOFT_SERIAL,
 };
 
 

@@ -58,10 +58,16 @@ void PIOS_Soft_Serial_LL_EdgeDetect_Cmd(uint32_t dev, FunctionalState NewState);
 struct pios_soft_serial_ll_gpio {
     volatile uint32_t *mode_bb;
 #if defined(STM32F1)
-    uint32_t bsrr_value;
-    volatile uint32_t *bsrr;
+    uint32_t pupd_value;
+    volatile uint32_t *pupd_bsrr;
 #endif
 };
+
+#define PIOS_SOFT_SERIAL_LL_GPIO_ITYPE_PULLUP    0b0001
+#define PIOS_SOFT_SERIAL_LL_GPIO_ITYPE_PULLDOWN  0b0000
+
+#define PIOS_SOFT_SERIAL_LL_GPIO_OTYPE_PP        0b0010
+#define PIOS_SOFT_SERIAL_LL_GPIO_OTYPE_OD        0b0000
 
 #if defined(STM32F3) || defined(STM32F4)
 #define PIOS_SOFT_SERIAL_LL_GPIO_INPUT(llg) \
@@ -81,7 +87,7 @@ struct pios_soft_serial_ll_gpio {
     (llg).mode_bb[1] = 0; /* GPIO_MODEy1 */ \
     (llg).mode_bb[2] = 0; /* GPIO_CNFy0 */ \
     (llg).mode_bb[3] = 1; /* GPIO_CNFy1 */ \
-    *((llg).bsrr) = (llg).bsrr_value /* set pull up-down state */
+    *((llg).pupd_bsrr) = (llg).pupd_value /* set pull up-down state */
 
 /* Output Push-pull mode, Max. output speed 10 MHz
  * MODE 01
@@ -94,7 +100,10 @@ struct pios_soft_serial_ll_gpio {
     (llg).mode_bb[3] = 0; /* GPIO_CNFy1 */
 #endif
 
-void PIOS_Soft_Serial_LL_GPIO_Init(struct pios_soft_serial_ll_gpio *llg, GPIO_TypeDef *gpio, uint16_t pin);
+void PIOS_Soft_Serial_LL_GPIO_Init(struct pios_soft_serial_ll_gpio *llg,
+                                   GPIO_TypeDef *gpio,
+                                   uint16_t pin,
+                                   uint32_t mode);
 
 
 #endif /* PIOS_SOFT_SERIAL_LL_H */

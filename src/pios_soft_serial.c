@@ -121,15 +121,10 @@ static void PIOS_Soft_Serial_FreeDMABuffer(struct pios_soft_serial_device *dev, 
 static uint16_t PIOS_Soft_Serial_Encode(struct pios_soft_serial_device *dev, uint8_t data, uint32_t *buffer);
 static void PIOS_Soft_Serial_Tx_Start_Internal(struct pios_soft_serial_device *dev);
 
-
-#define PIOS_SOFT_SERIAL_GPIO_MODE_RX  0b0001
-#define PIOS_SOFT_SERIAL_GPIO_MODE_TX  0b0000
-#define PIOS_SOFT_SERIAL_GPIO_MODE_PUP 0b0010
-#define PIOS_SOFT_SERIAL_GPIO_MODE_PDN 0b0000
-
 static void PIOS_Soft_Serial_GPIO_Setup(struct pios_soft_serial_gpio *gs,
-                                        struct stm32_gpio *pin,
-                                        uint32_t mode);
+                                        GPIO_TypeDef *gpio,
+                                        uint8_t pin,
+                                        uint32_t ll_mode);
 
 
 #if !defined(PIOS_INCLUDE_FREERTOS)
@@ -303,42 +298,43 @@ static int32_t  PIOS_Soft_Serial_Ioctl(uint32_t id, uint32_t ctl, void *param)
 {
     PIOS_SOFT_SERIAL_VALIDATE_AND_ASSERT(dev, id);
 
+    switch(ctl) {
+        case PIOS_IOCTL_SOFT_SERIAL_SET_RXGPIO:
+            PIOS_Soft_Serial_GPIO_Setup(&dev->rx, (struct stm32_gpio *)param, TYPE_RX);
+
+            return 0;
+        case PIOS_IOCTL_SOFT_SERIAL_SET_TXGPIO:
+            PIOS_Soft_Serial_GPIO_Setup(&dev->tx, (struct stm32_gpio *)param, TYPE_TX);
+            PIOS_DMA_SetPeripheralBaseAddr(dev->tx.dma, &((struct stm32_gpio *)param)->gpio->BSRR);
+        break;
+    }
+
 // set rx gpio, init, PIOS_DMA_SetPeripheralBaseAddr(), PIOS_Soft_Serial_LL_EdgeDetect_Configure()
 // set tx gpio, init, PIOS_DMA_SetPeripheralBaseAddr()
 
     return -1;
 }
 
-static void PIOS_Soft_Serial_GPIO_Setup(struct pios_soft_serial_gpio *gs,
-                                        struct stm32_gpio *pin,
-                                        uint32_t mode)
+static void PIOS_Soft_Serial_GPIO_Setup(struct pios_soft_serial_device *dev,
+                                        struct stm32_gpio *gpio,
+                                        enum PIOS_SOFT_SERIAL_GPIO_Type type)
 {
-    /*
-     * 1. fill structure
-     * 2. PIOS_DMA_SetPeripheralBaseAddr()
-     * 3. PIOS_Soft_Serial_LL_GPIO_Direction_Init()
-     */
+    struct pios_soft_serial_gpio *gs = (type == TYPE_RX) ? &dev->rx : &dev->tx;
 
-    if(pin) {
-        gs->pin = pin->init.GPIO_Pin;
-        gs->gpio = pin->gpio;
+    if(gpio) {
+        gs->gpio = gpio->gpio;
+        gs->pin = gpio->init.GPIO_Pin;
     }
-    
-    
+
     if(gs->gpio) {
-        PIOS_Soft_Serial_LL_GPIO_Init(&gs->ll, gs->gpio, gs->pin);
-
-        GPIO_InitTypeDef gpioInit = pin->init;
-        
-#if defined(STM32F3) || defined(STM32F4)
-        gpioInit.GPIO_Mode = GPIO_Mode_IN; /* default mode is in */
-        gpioInit.GPIO_PuPd = (mode & PIOS_SOFT_SERIAL_GPIO_MODE_PUP) ? GPIO_PuPd_UP : GPIO_PuPd_DOWN;
-        gpioInit.GPIO_OType = GPIO_OType_PP;
-#elif defined(STM32F1)
-        gpioInit.GPIO_Mode = inverted ? GPIO_Mode_IPD : GPIO_Mode_IPU;
-#endif
-
-        GPIO_Init(gs->gpio, &gpioInit);
+        PIOS_Soft_Serial_LL_GPIO_Init(&gs->ll, gs->gpio, gs->pin, gpio_mode);
+    
+        if(type == TYPE_RX) {
+            PIOS_DMA_SetPeripheralBaseAddr(gs->dma, &gs->gpio->IDR);
+            PIOS_Soft_Serial_LL_EdgeDetect_Configure(dev->edge_detect, 
+        } else if(type == TYPE_TX) {
+            PIOS_DMA_SetPeripheralBaseAddr(gs->dma, &gs->gpio->BSRR);
+        }
     }
 }
 
